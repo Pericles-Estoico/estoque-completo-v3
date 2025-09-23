@@ -51,7 +51,7 @@ st.markdown("""
 
 # URLs
 SHEETS_URL = "https://docs.google.com/spreadsheets/d/1PpiMQingHf4llA03BiPIuPJPIZqul4grRU_emWDEK1o/export?format=csv"
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzf2jgGAPqJWXI2tIm5R4kC-j2NPaSvbKq1xVYAXHtcSyjNwMohK4UK_ppMqPkfFT8/exec"
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzCxotWn-SXG52CXU7tNnd7KtBhx1uYwHr-ka2qWjswTcfj3QvHuA1VvDo-BL_fpg8U/exec"
 
 # Funções
 @st.cache_data(ttl=30)
