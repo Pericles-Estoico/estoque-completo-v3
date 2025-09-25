@@ -115,8 +115,22 @@ def movimentar_estoque(codigo, quantidade, tipo):
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
-# Interface Principal
-st.title("📦 Sistema Completo de Controle de Estoque")
+# Interface Princip# Interface com logo e centralização
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    try:
+        st.image("logo_silva.jpeg", width=250)
+    except:
+        st.title("📊 SILVA HOLDING")
+    
+    st.markdown("""
+    <div style="text-align: center;">
+        <h1>📊 Sistema de Controle de Estoque</h1>
+        <p style="font-style: italic; color: #666; font-size: 1em;">
+        "Se parar para sentir o perfume das rosas, vem um caminhão e te atropela"
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 st.markdown("**Versão Desktop** - Dashboard Profissional com Relatórios Completos")
 
 # Carregar dados
