@@ -52,11 +52,12 @@ def carregar_produtos():
 
 # Função para calcular semáforo
 def calcular_semaforo(estoque_atual, estoque_min, estoque_max):
-    if estoque_atual <= estoque_min:
+    # Crítico = ABAIXO do mínimo (não igual)
+    if estoque_atual < estoque_min:
         return "🔴", "CRÍTICO", "#ff4444"
-    elif estoque_atual <= estoque_min * 1.5:
+    elif estoque_atual <= estoque_min * 1.2:  # Até 20% acima do mínimo
         return "🟡", "BAIXO", "#ffaa00"
-    elif estoque_atual >= estoque_max:
+    elif estoque_atual > estoque_max:
         return "🔵", "EXCESSO", "#0088ff"
     else:
         return "🟢", "OK", "#00aa00"
