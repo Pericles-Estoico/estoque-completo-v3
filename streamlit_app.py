@@ -178,11 +178,11 @@ if tipo_analise == "Visão Geral":
         """, unsafe_allow_html=True)
     
     with col2:
-        estoque_total = df_filtrado['estoque_atual'].sum()
+        estoque_total = int(df_filtrado['estoque_atual'].sum())
         st.markdown(f"""
         <div class="metric-card">
             <h3>📊 ESTOQUE TOTAL</h3>
-            <h2>{estoque_total:,.0f}</h2>
+            <h2>{estoque_total:,}</h2>
         </div>
         """, unsafe_allow_html=True)
     
@@ -312,6 +312,12 @@ elif tipo_analise == "Análise Mín/Máx":
             'semaforo', 'codigo', 'nome', 'categoria', 
             'estoque_atual', 'estoque_min', 'estoque_max', coluna_analise
         ]].copy()
+        
+        # Converter para inteiros (remover .0)
+        tabela_exibicao['estoque_atual'] = tabela_exibicao['estoque_atual'].astype(int)
+        tabela_exibicao['estoque_min'] = tabela_exibicao['estoque_min'].astype(int)
+        tabela_exibicao['estoque_max'] = tabela_exibicao['estoque_max'].astype(int)
+        tabela_exibicao[coluna_analise] = tabela_exibicao[coluna_analise].astype(int)
         
         tabela_exibicao.columns = [
             '🚦', 'Código', 'Produto', 'Categoria', 
