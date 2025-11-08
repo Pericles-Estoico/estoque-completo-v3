@@ -6,7 +6,7 @@ from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from io import StringIO
+from io import StringIO, BytesIO
 
 # Configuração da página
 st.set_page_config(
@@ -78,6 +78,79 @@ def movimentar_estoque(codigo, quantidade, tipo, colaborador):
     except Exception as e:
         return {'success': False, 'message': f'Erro: {str(e)}'}
 
+# Função para processar arquivo de faturamento
+def processar_faturamento(arquivo_upload, produtos_df):
+    """
+    Processa arquivo de faturamento e retorna:
+    - produtos_encontrados: DataFrame com produtos que existem no estoque
+    - produtos_nao_encontrados: DataFrame com produtos que NÃO existem no estoque
+    """
+    try:
+        # Ler arquivo baseado na extensão
+        nome_arquivo = arquivo_upload.name.lower()
+        
+        if nome_arquivo.endswith('.csv'):
+            # Tentar diferentes encodings para CSV
+            for encoding in ['latin1', 'utf-8', 'iso-8859-1', 'cp1252']:
+                try:
+                    df_fatura = pd.read_csv(arquivo_upload, encoding=encoding)
+                    break
+                except:
+                    continue
+        elif nome_arquivo.endswith(('.xls', '.xlsx')):
+            df_fatura = pd.read_excel(arquivo_upload, engine='openpyxl')
+        else:
+            return None, None, "Formato de arquivo não suportado. Use CSV, XLS ou XLSX."
+        
+        # Verificar se tem as colunas necessárias
+        if 'Código' not in df_fatura.columns and 'codigo' not in df_fatura.columns:
+            return None, None, "Arquivo não possui coluna 'Código' ou 'codigo'"
+        
+        if 'Quantidade' not in df_fatura.columns and 'quantidade' not in df_fatura.columns:
+            return None, None, "Arquivo não possui coluna 'Quantidade' ou 'quantidade'"
+        
+        # Normalizar nomes das colunas
+        df_fatura.columns = df_fatura.columns.str.lower()
+        
+        # Renomear se necessário
+        if 'código' in df_fatura.columns:
+            df_fatura.rename(columns={'código': 'codigo'}, inplace=True)
+        
+        # Limpar e preparar dados
+        df_fatura['codigo'] = df_fatura['codigo'].astype(str).str.strip()
+        df_fatura['quantidade'] = pd.to_numeric(df_fatura['quantidade'], errors='coerce').fillna(0).astype(int)
+        
+        # Remover linhas sem código ou quantidade
+        df_fatura = df_fatura[(df_fatura['codigo'] != '') & (df_fatura['quantidade'] > 0)]
+        
+        # Criar dicionário de códigos do estoque para busca rápida
+        codigos_estoque = set(produtos_df['codigo'].str.strip().str.upper())
+        
+        # Separar produtos encontrados e não encontrados
+        df_fatura['codigo_upper'] = df_fatura['codigo'].str.upper()
+        df_fatura['encontrado'] = df_fatura['codigo_upper'].isin(codigos_estoque)
+        
+        produtos_encontrados = df_fatura[df_fatura['encontrado']].copy()
+        produtos_nao_encontrados = df_fatura[~df_fatura['encontrado']].copy()
+        
+        # Adicionar informações do estoque aos produtos encontrados
+        if not produtos_encontrados.empty:
+            # Criar dicionário para merge
+            estoque_dict = produtos_df.set_index(produtos_df['codigo'].str.upper()).to_dict('index')
+            
+            produtos_encontrados['nome'] = produtos_encontrados['codigo_upper'].map(
+                lambda x: estoque_dict.get(x, {}).get('nome', 'N/A')
+            )
+            produtos_encontrados['estoque_atual'] = produtos_encontrados['codigo_upper'].map(
+                lambda x: estoque_dict.get(x, {}).get('estoque_atual', 0)
+            )
+            produtos_encontrados['estoque_final'] = produtos_encontrados['estoque_atual'] - produtos_encontrados['quantidade']
+        
+        return produtos_encontrados, produtos_nao_encontrados, None
+        
+    except Exception as e:
+        return None, None, f"Erro ao processar arquivo: {str(e)}"
+
 # CSS personalizado para dashboard
 st.markdown("""
 <style>
@@ -106,6 +179,27 @@ st.markdown("""
         border-radius: 10px;
         text-align: center;
         margin-bottom: 1rem;
+    }
+    .warning-box {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        border-radius: 5px;
+        margin: 1rem 0;
+    }
+    .success-box {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+        padding: 1rem;
+        border-radius: 5px;
+        margin: 1rem 0;
+    }
+    .error-box {
+        background: #f8d7da;
+        border-left: 4px solid #dc3545;
+        padding: 1rem;
+        border-radius: 5px;
+        margin: 1rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -150,7 +244,7 @@ status_filtro = st.sidebar.selectbox("🚦 Status:", status_opcoes)
 # Tipo de análise
 tipo_analise = st.sidebar.radio(
     "📊 Tipo de Análise:",
-    ["Visão Geral", "Análise Mín/Máx", "Movimentação"]
+    ["Visão Geral", "Análise Mín/Máx", "Movimentação", "Baixa por Faturamento"]
 )
 
 # Aplicar filtros
@@ -309,45 +403,44 @@ elif tipo_analise == "Análise Mín/Máx":
         
         # Preparar dados para exibição
         tabela_exibicao = df_analise[[
-            'semaforo', 'codigo', 'nome', 'categoria', 
-            'estoque_atual', 'estoque_min', 'estoque_max', coluna_analise
+            'codigo', 'nome', 'categoria', 'estoque_atual', 
+            'estoque_min', 'estoque_max', coluna_analise, 'status'
         ]].copy()
         
-        # Converter para inteiros (remover .0)
-        tabela_exibicao['estoque_atual'] = tabela_exibicao['estoque_atual'].astype(int)
-        tabela_exibicao['estoque_min'] = tabela_exibicao['estoque_min'].astype(int)
-        tabela_exibicao['estoque_max'] = tabela_exibicao['estoque_max'].astype(int)
-        tabela_exibicao[coluna_analise] = tabela_exibicao[coluna_analise].astype(int)
-        
         tabela_exibicao.columns = [
-            '🚦', 'Código', 'Produto', 'Categoria', 
-            'Atual', 'Mínimo', 'Máximo', titulo_coluna
+            'Código', 'Produto', 'Categoria', 'Atual', 
+            'Mínimo', 'Máximo', titulo_coluna, 'Status'
         ]
         
-        # Ordenar por valor da análise (decrescente)
+        # Formatar números
+        for col in ['Atual', 'Mínimo', 'Máximo', titulo_coluna]:
+            tabela_exibicao[col] = tabela_exibicao[col].astype(int)
+        
+        # Ordenar por diferença
         tabela_exibicao = tabela_exibicao.sort_values(titulo_coluna, ascending=False)
         
-        st.dataframe(
-            tabela_exibicao,
-            use_container_width=True,
-            height=400
-        )
+        # Exibir tabela
+        st.dataframe(tabela_exibicao, use_container_width=True, height=400)
         
-        # Botão para download CSV
-        csv_data = tabela_exibicao.to_csv(index=False)
+        # Download CSV
+        csv = tabela_exibicao.to_csv(index=False, encoding='utf-8-sig')
         st.download_button(
-            label=f"📥 Download {analise_tipo} - CSV",
-            data=csv_data,
-            file_name=f"analise_{analise_tipo.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            label="📥 Baixar Relatório CSV",
+            data=csv,
+            file_name=f"analise_{analise_tipo.lower().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv"
         )
         
-        # Gráfico
-        if len(df_analise) <= 20:  # Só mostrar gráfico se não for muitos produtos
+        # Gráfico top 20
+        if len(df_analise) > 0:
+            st.subheader(f"📊 Top 20 - {analise_tipo}")
+            top_20 = df_analise.nlargest(20, coluna_analise)
+            
             fig = px.bar(
-                df_analise.head(20),
-                x='codigo',
-                y=coluna_analise,
+                top_20,
+                x=coluna_analise,
+                y='codigo',
+                orientation='h',
                 color='status',
                 title=f"Top 20 - {analise_tipo}",
                 color_discrete_map={
@@ -419,6 +512,189 @@ elif tipo_analise == "Movimentação":
     
     elif not busca:
         st.info("💡 Digite pelo menos 2 caracteres para buscar produtos")
+
+elif tipo_analise == "Baixa por Faturamento":
+    
+    st.subheader("📄 BAIXA POR FATURAMENTO")
+    
+    st.markdown("""
+    <div class="success-box">
+        <strong>ℹ️ Como funciona:</strong><br>
+        1. Faça upload do arquivo de faturamento (CSV, XLS ou XLSX)<br>
+        2. O sistema vai identificar quais produtos existem no estoque<br>
+        3. Produtos encontrados: baixa será aplicada (permite estoque negativo)<br>
+        4. Produtos NÃO encontrados: serão listados para cadastro posterior<br>
+        5. Revise o preview e confirme a operação
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Colaborador
+    colaboradores = ['Pericles', 'Maria', 'Camila', 'Cris VantiStella']
+    colaborador_fatura = st.selectbox("👤 Colaborador responsável:", colaboradores, key="colab_fatura")
+    
+    # Upload do arquivo
+    arquivo_fatura = st.file_uploader(
+        "📁 Selecione o arquivo de faturamento:",
+        type=['csv', 'xls', 'xlsx'],
+        help="Arquivo deve conter colunas 'Código' e 'Quantidade'"
+    )
+    
+    if arquivo_fatura is not None:
+        
+        # Processar arquivo
+        with st.spinner("🔄 Processando arquivo..."):
+            produtos_encontrados, produtos_nao_encontrados, erro = processar_faturamento(arquivo_fatura, produtos_df)
+        
+        if erro:
+            st.error(f"❌ {erro}")
+        
+        else:
+            # Resumo do processamento
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                total_linhas = len(produtos_encontrados) + len(produtos_nao_encontrados)
+                st.metric("📊 Total de Linhas", total_linhas)
+            
+            with col2:
+                st.metric("✅ Produtos Encontrados", len(produtos_encontrados))
+            
+            with col3:
+                st.metric("❌ Produtos NÃO Encontrados", len(produtos_nao_encontrados))
+            
+            # PRODUTOS NÃO ENCONTRADOS
+            if not produtos_nao_encontrados.empty:
+                st.markdown("---")
+                st.markdown("""
+                <div class="error-box">
+                    <strong>⚠️ ATENÇÃO: Produtos não encontrados no cadastro</strong><br>
+                    Os produtos abaixo NÃO serão baixados do estoque. Você precisa cadastrá-los primeiro.
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Tabela de não encontrados
+                tabela_nao_encontrados = produtos_nao_encontrados[['codigo', 'quantidade']].copy()
+                tabela_nao_encontrados.columns = ['Código', 'Quantidade Solicitada']
+                
+                st.dataframe(tabela_nao_encontrados, use_container_width=True, height=200)
+                
+                # Download relatório de faltantes
+                csv_faltantes = tabela_nao_encontrados.to_csv(index=False, encoding='utf-8-sig')
+                st.download_button(
+                    label="📥 Baixar Relatório de Códigos Faltantes",
+                    data=csv_faltantes,
+                    file_name=f"codigos_faltantes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    type="primary"
+                )
+            
+            # PRODUTOS ENCONTRADOS - PREVIEW
+            if not produtos_encontrados.empty:
+                st.markdown("---")
+                st.subheader("✅ Preview da Baixa de Estoque")
+                
+                st.markdown("""
+                <div class="warning-box">
+                    <strong>💡 Importante:</strong> Produtos com estoque zerado terão estoque NEGATIVO após a baixa.
+                    Isso indica que você precisa dar entrada manual posteriormente.
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Preparar tabela de preview
+                preview_df = produtos_encontrados[['codigo', 'nome', 'estoque_atual', 'quantidade', 'estoque_final']].copy()
+                preview_df.columns = ['Código', 'Produto', 'Estoque Atual', 'Qtd a Baixar', 'Estoque Final']
+                
+                # Formatar números
+                for col in ['Estoque Atual', 'Qtd a Baixar', 'Estoque Final']:
+                    preview_df[col] = preview_df[col].astype(int)
+                
+                # Adicionar indicador visual
+                preview_df['Status'] = preview_df['Estoque Final'].apply(
+                    lambda x: '🔴 Negativo' if x < 0 else ('🟡 Zerado' if x == 0 else '🟢 OK')
+                )
+                
+                # Exibir tabela
+                st.dataframe(preview_df, use_container_width=True, height=400)
+                
+                # Estatísticas
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    total_baixar = int(preview_df['Qtd a Baixar'].sum())
+                    st.metric("📦 Total a Baixar", f"{total_baixar:,}")
+                
+                with col2:
+                    ficarao_negativos = len(preview_df[preview_df['Estoque Final'] < 0])
+                    st.metric("🔴 Ficarão Negativos", ficarao_negativos)
+                
+                with col3:
+                    ficarao_zerados = len(preview_df[preview_df['Estoque Final'] == 0])
+                    st.metric("🟡 Ficarão Zerados", ficarao_zerados)
+                
+                # Botão de confirmação
+                st.markdown("---")
+                col1, col2, col3 = st.columns([1, 2, 1])
+                
+                with col2:
+                    if st.button("✅ CONFIRMAR E APLICAR BAIXAS", type="primary", use_container_width=True):
+                        
+                        # Aplicar baixas
+                        sucesso_count = 0
+                        erro_count = 0
+                        resultados = []
+                        
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        total = len(produtos_encontrados)
+                        
+                        for idx, row in produtos_encontrados.iterrows():
+                            status_text.text(f"Processando {idx+1}/{total}: {row['codigo']}")
+                            
+                            resultado = movimentar_estoque(
+                                row['codigo'],
+                                row['quantidade'],
+                                'saida',
+                                colaborador_fatura
+                            )
+                            
+                            if resultado.get('success'):
+                                sucesso_count += 1
+                                resultados.append({
+                                    'codigo': row['codigo'],
+                                    'status': '✅ Sucesso',
+                                    'novo_estoque': resultado.get('novo_estoque', 'N/A')
+                                })
+                            else:
+                                erro_count += 1
+                                resultados.append({
+                                    'codigo': row['codigo'],
+                                    'status': f"❌ Erro: {resultado.get('message', 'Desconhecido')}",
+                                    'novo_estoque': 'N/A'
+                                })
+                            
+                            progress_bar.progress((idx + 1) / total)
+                        
+                        progress_bar.empty()
+                        status_text.empty()
+                        
+                        # Mostrar resultado final
+                        if erro_count == 0:
+                            st.success(f"🎉 Baixa concluída com sucesso! {sucesso_count} produtos atualizados.")
+                        else:
+                            st.warning(f"⚠️ Baixa concluída com problemas: {sucesso_count} sucessos, {erro_count} erros.")
+                        
+                        # Mostrar detalhes
+                        with st.expander("📋 Ver Detalhes da Operação"):
+                            df_resultados = pd.DataFrame(resultados)
+                            st.dataframe(df_resultados, use_container_width=True)
+                        
+                        # Limpar cache e recarregar
+                        st.cache_data.clear()
+                        st.balloons()
+                        
+                        # Botão para voltar
+                        if st.button("🔄 Processar Novo Arquivo"):
+                            st.rerun()
 
 # Footer
 st.markdown("---")
