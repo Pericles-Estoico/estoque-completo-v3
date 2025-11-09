@@ -125,6 +125,9 @@ def processar_faturamento(arquivo_upload, produtos_df):
         # Remover linhas sem código ou quantidade
         df_fatura = df_fatura[(df_fatura['codigo'] != '') & (df_fatura['quantidade'] > 0)]
         
+        # AGRUPAR E SOMAR produtos duplicados
+        df_fatura = df_fatura.groupby('codigo', as_index=False)['quantidade'].sum()
+        
         # Resetar índice para evitar duplicatas
         df_fatura = df_fatura.reset_index(drop=True)
         
@@ -144,8 +147,14 @@ def processar_faturamento(arquivo_upload, produtos_df):
         
         # Adicionar informações do estoque aos produtos encontrados
         if not produtos_encontrados.empty:
-            # Criar dicionário para merge
-            estoque_dict = produtos_df.set_index(produtos_df['codigo'].str.upper()).to_dict('index')
+            # Criar dicionário para merge SEM usar índices
+            estoque_dict = {}
+            for _, row in produtos_df.iterrows():
+                codigo_upper = str(row['codigo']).strip().upper()
+                estoque_dict[codigo_upper] = {
+                    'nome': row['nome'],
+                    'estoque_atual': row['estoque_atual']
+                }
             
             produtos_encontrados['nome'] = produtos_encontrados['codigo_upper'].map(
                 lambda x: estoque_dict.get(x, {}).get('nome', 'N/A')
