@@ -10,8 +10,8 @@ from io import StringIO, BytesIO
 
 # Configuração da página
 st.set_page_config(
-    page_title="🛩️ Estoque Cockpit - Silva Holding",
-    page_icon="🛩️",
+    page_title=" Estoque Cockpit - Silva Holding",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -54,13 +54,13 @@ def carregar_produtos():
 def calcular_semaforo(estoque_atual, estoque_min, estoque_max):
     # Crítico = ABAIXO do mínimo (não igual)
     if estoque_atual < estoque_min:
-        return "🔴", "CRÍTICO", "#ff4444"
+        return "", "CRÍTICO", "#ff4444"
     elif estoque_atual <= estoque_min * 1.2:  # Até 20% acima do mínimo
-        return "🟡", "BAIXO", "#ffaa00"
+        return "", "BAIXO", "#ffaa00"
     elif estoque_atual > estoque_max:
-        return "🔵", "EXCESSO", "#0088ff"
+        return "", "EXCESSO", "#0088ff"
     else:
-        return "🟢", "OK", "#00aa00"
+        return "", "OK", "#00aa00"
 
 # Função para movimentar estoque
 def movimentar_estoque(codigo, quantidade, tipo, colaborador):
@@ -216,7 +216,7 @@ st.markdown("""
 # Header principal
 st.markdown("""
 <div class="cockpit-header">
-    <h1>🛩️ COCKPIT DE CONTROLE - SILVA HOLDING</h1>
+    <h1> COCKPIT DE CONTROLE - SILVA HOLDING</h1>
     <p>"Se parar para sentir o perfume das rosas, vem um caminhão e te atropela"</p>
 </div>
 """, unsafe_allow_html=True)
@@ -225,7 +225,7 @@ st.markdown("""
 produtos_df = carregar_produtos()
 
 if produtos_df.empty:
-    st.error("❌ Não foi possível carregar os dados da planilha")
+    st.error(" Não foi possível carregar os dados da planilha")
     st.stop()
 
 # Calcular métricas e semáforos
@@ -252,7 +252,7 @@ status_filtro = st.sidebar.selectbox("🚦 Status:", status_opcoes)
 
 # Tipo de análise
 tipo_analise = st.sidebar.radio(
-    "📊 Tipo de Análise:",
+    " Tipo de Análise:",
     ["Visão Geral", "Análise Mín/Máx", "Movimentação", "Baixa por Faturamento"]
 )
 
@@ -275,7 +275,7 @@ if tipo_analise == "Visão Geral":
         total_produtos = len(df_filtrado)
         st.markdown(f"""
         <div class="metric-card">
-            <h3>📦 PRODUTOS</h3>
+            <h3> PRODUTOS</h3>
             <h2>{total_produtos}</h2>
         </div>
         """, unsafe_allow_html=True)
@@ -284,7 +284,7 @@ if tipo_analise == "Visão Geral":
         estoque_total = int(df_filtrado['estoque_atual'].sum())
         st.markdown(f"""
         <div class="metric-card">
-            <h3>📊 ESTOQUE TOTAL</h3>
+            <h3> ESTOQUE TOTAL</h3>
             <h2>{estoque_total:,}</h2>
         </div>
         """, unsafe_allow_html=True)
@@ -293,7 +293,7 @@ if tipo_analise == "Visão Geral":
         criticos = len(df_filtrado[df_filtrado['status'] == 'CRÍTICO'])
         st.markdown(f"""
         <div class="metric-card">
-            <h3>🔴 CRÍTICOS</h3>
+            <h3> CRÍTICOS</h3>
             <h2>{criticos}</h2>
         </div>
         """, unsafe_allow_html=True)
@@ -302,7 +302,7 @@ if tipo_analise == "Visão Geral":
         baixos = len(df_filtrado[df_filtrado['status'] == 'BAIXO'])
         st.markdown(f"""
         <div class="metric-card">
-            <h3>🟡 BAIXOS</h3>
+            <h3> BAIXOS</h3>
             <h2>{baixos}</h2>
         </div>
         """, unsafe_allow_html=True)
@@ -311,7 +311,7 @@ if tipo_analise == "Visão Geral":
         ok_count = len(df_filtrado[df_filtrado['status'] == 'OK'])
         st.markdown(f"""
         <div class="metric-card">
-            <h3>🟢 OK</h3>
+            <h3> OK</h3>
             <h2>{ok_count}</h2>
         </div>
         """, unsafe_allow_html=True)
@@ -320,7 +320,7 @@ if tipo_analise == "Visão Geral":
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Distribuição por Status")
+        st.subheader(" Distribuição por Status")
         status_counts = df_filtrado['status'].value_counts()
         fig_pie = px.pie(
             values=status_counts.values,
@@ -357,16 +357,16 @@ if tipo_analise == "Visão Geral":
             st.markdown(f"""
             <div class="status-card {status_class}">
                 <strong>{produto['semaforo']} {produto['codigo']}</strong> - {produto['nome']}<br>
-                <small>📦 Atual: {int(produto['estoque_atual'])} | Mínimo: {int(produto['estoque_min'])} | 
+                <small> Atual: {int(produto['estoque_atual'])} | Mínimo: {int(produto['estoque_min'])} | 
                 Falta: {int(produto['falta_para_min'])}</small>
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.success("✅ Nenhum produto em situação crítica!")
+        st.success(" Nenhum produto em situação crítica!")
 
 elif tipo_analise == "Análise Mín/Máx":
     
-    st.subheader("📊 ANÁLISE ESTOQUE MÍNIMO/MÁXIMO")
+    st.subheader(" ANÁLISE ESTOQUE MÍNIMO/MÁXIMO")
     
     # Opções de análise
     col1, col2 = st.columns(2)
@@ -442,7 +442,7 @@ elif tipo_analise == "Análise Mín/Máx":
         
         # Gráfico top 20
         if len(df_analise) > 0:
-            st.subheader(f"📊 Top 20 - {analise_tipo}")
+            st.subheader(f" Top 20 - {analise_tipo}")
             top_20 = df_analise.nlargest(20, coluna_analise)
             
             fig = px.bar(
@@ -467,7 +467,7 @@ elif tipo_analise == "Análise Mín/Máx":
 
 elif tipo_analise == "Movimentação":
     
-    st.subheader("📦 MOVIMENTAÇÃO DE ESTOQUE")
+    st.subheader(" MOVIMENTAÇÃO DE ESTOQUE")
     
     # Colaboradores
     colaboradores = ['Pericles', 'Maria', 'Camila', 'Cris VantiStella']
@@ -497,34 +497,34 @@ elif tipo_analise == "Movimentação":
                     with col2:
                         st.write("**ENTRADA**")
                         qtd_entrada = st.number_input("Quantidade:", min_value=1, value=1, key=f"ent_{produto['codigo']}")
-                        if st.button("➕ Entrada", key=f"btn_ent_{produto['codigo']}"):
+                        if st.button("+ Entrada", key=f"btn_ent_{produto['codigo']}"):
                             resultado = movimentar_estoque(produto['codigo'], qtd_entrada, 'entrada', colaborador)
                             if resultado.get('success'):
-                                st.success(f"✅ Entrada realizada! Novo estoque: {resultado.get('novo_estoque')}")
+                                st.success(f" Entrada realizada! Novo estoque: {resultado.get('novo_estoque')}")
                                 st.rerun()
                             else:
-                                st.error(f"❌ {resultado.get('message', 'Erro desconhecido')}")
+                                st.error(f" {resultado.get('message', 'Erro desconhecido')}")
                     
                     with col3:
                         st.write("**SAÍDA**")
                         max_saida = max(1, int(produto['estoque_atual']))
                         qtd_saida = st.number_input("Quantidade:", min_value=1, max_value=max_saida, value=1, key=f"sai_{produto['codigo']}")
-                        if st.button("➖ Saída", key=f"btn_sai_{produto['codigo']}"):
+                        if st.button("- Saída", key=f"btn_sai_{produto['codigo']}"):
                             resultado = movimentar_estoque(produto['codigo'], qtd_saida, 'saida', colaborador)
                             if resultado.get('success'):
-                                st.success(f"✅ Saída realizada! Novo estoque: {resultado.get('novo_estoque')}")
+                                st.success(f" Saída realizada! Novo estoque: {resultado.get('novo_estoque')}")
                                 st.rerun()
                             else:
-                                st.error(f"❌ {resultado.get('message', 'Erro desconhecido')}")
+                                st.error(f" {resultado.get('message', 'Erro desconhecido')}")
         else:
-            st.warning("❌ Nenhum produto encontrado")
+            st.warning(" Nenhum produto encontrado")
     
     elif not busca:
-        st.info("💡 Digite pelo menos 2 caracteres para buscar produtos")
+        st.info(" Digite pelo menos 2 caracteres para buscar produtos")
 
 elif tipo_analise == "Baixa por Faturamento":
     
-    st.subheader("📄 BAIXA POR FATURAMENTO")
+    st.subheader(" BAIXA POR FATURAMENTO")
     
     st.markdown("""
     <div class="success-box">
@@ -551,11 +551,11 @@ elif tipo_analise == "Baixa por Faturamento":
     if arquivo_fatura is not None:
         
         # Processar arquivo
-        with st.spinner("🔄 Processando arquivo..."):
+        with st.spinner(" Processando arquivo..."):
             produtos_encontrados, produtos_nao_encontrados, erro = processar_faturamento(arquivo_fatura, produtos_df)
         
         if erro:
-            st.error(f"❌ {erro}")
+            st.error(f" {erro}")
         
         else:
             # Resumo do processamento
@@ -563,20 +563,20 @@ elif tipo_analise == "Baixa por Faturamento":
             
             with col1:
                 total_linhas = len(produtos_encontrados) + len(produtos_nao_encontrados)
-                st.metric("📊 Total de Linhas", total_linhas)
+                st.metric(" Total de Linhas", total_linhas)
             
             with col2:
-                st.metric("✅ Produtos Encontrados", len(produtos_encontrados))
+                st.metric(" Produtos Encontrados", len(produtos_encontrados))
             
             with col3:
-                st.metric("❌ Produtos NÃO Encontrados", len(produtos_nao_encontrados))
+                st.metric(" Produtos NÃO Encontrados", len(produtos_nao_encontrados))
             
             # PRODUTOS NÃO ENCONTRADOS
             if not produtos_nao_encontrados.empty:
                 st.markdown("---")
                 st.markdown("""
                 <div class="error-box">
-                    <strong>⚠️ ATENÇÃO: Produtos não encontrados no cadastro</strong><br>
+                    <strong> ATENÇÃO: Produtos não encontrados no cadastro</strong><br>
                     Os produtos abaixo NÃO serão baixados do estoque. Você precisa cadastrá-los primeiro.
                 </div>
                 """, unsafe_allow_html=True)
@@ -600,11 +600,11 @@ elif tipo_analise == "Baixa por Faturamento":
             # PRODUTOS ENCONTRADOS - PREVIEW
             if not produtos_encontrados.empty:
                 st.markdown("---")
-                st.subheader("✅ Preview da Baixa de Estoque")
+                st.subheader(" Preview da Baixa de Estoque")
                 
                 st.markdown("""
                 <div class="warning-box">
-                    <strong>💡 Importante:</strong> Produtos com estoque zerado terão estoque NEGATIVO após a baixa.
+                    <strong> Importante:</strong> Produtos com estoque zerado terão estoque NEGATIVO após a baixa.
                     Isso indica que você precisa dar entrada manual posteriormente.
                 </div>
                 """, unsafe_allow_html=True)
@@ -619,7 +619,7 @@ elif tipo_analise == "Baixa por Faturamento":
                 
                 # Adicionar indicador visual
                 preview_df['Status'] = preview_df['Estoque Final'].apply(
-                    lambda x: '🔴 Negativo' if x < 0 else ('🟡 Zerado' if x == 0 else '🟢 OK')
+                    lambda x: ' Negativo' if x < 0 else (' Zerado' if x == 0 else ' OK')
                 )
                 
                 # Exibir tabela
@@ -629,22 +629,22 @@ elif tipo_analise == "Baixa por Faturamento":
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     total_baixar = int(preview_df['Qtd a Baixar'].sum())
-                    st.metric("📦 Total a Baixar", f"{total_baixar:,}")
+                    st.metric(" Total a Baixar", f"{total_baixar:,}")
                 
                 with col2:
                     ficarao_negativos = len(preview_df[preview_df['Estoque Final'] < 0])
-                    st.metric("🔴 Ficarão Negativos", ficarao_negativos)
+                    st.metric(" Ficarão Negativos", ficarao_negativos)
                 
                 with col3:
                     ficarao_zerados = len(preview_df[preview_df['Estoque Final'] == 0])
-                    st.metric("🟡 Ficarão Zerados", ficarao_zerados)
+                    st.metric(" Ficarão Zerados", ficarao_zerados)
                 
                 # Botão de confirmação
                 st.markdown("---")
                 col1, col2, col3 = st.columns([1, 2, 1])
                 
                 with col2:
-                    if st.button("✅ CONFIRMAR E APLICAR BAIXAS", type="primary", use_container_width=True):
+                    if st.button(" CONFIRMAR E APLICAR BAIXAS", type="primary", use_container_width=True):
                         
                         # Aplicar baixas
                         sucesso_count = 0
@@ -670,14 +670,14 @@ elif tipo_analise == "Baixa por Faturamento":
                                 sucesso_count += 1
                                 resultados.append({
                                     'codigo': row['codigo'],
-                                    'status': '✅ Sucesso',
+                                    'status': ' Sucesso',
                                     'novo_estoque': resultado.get('novo_estoque', 'N/A')
                                 })
                             else:
                                 erro_count += 1
                                 resultados.append({
                                     'codigo': row['codigo'],
-                                    'status': f"❌ Erro: {resultado.get('message', 'Desconhecido')}",
+                                    'status': f" Erro: {resultado.get('message', 'Desconhecido')}",
                                     'novo_estoque': 'N/A'
                                 })
                             
@@ -688,9 +688,9 @@ elif tipo_analise == "Baixa por Faturamento":
                         
                         # Mostrar resultado final
                         if erro_count == 0:
-                            st.success(f"🎉 Baixa concluída com sucesso! {sucesso_count} produtos atualizados.")
+                            st.success(f" Baixa concluída com sucesso! {sucesso_count} produtos atualizados.")
                         else:
-                            st.warning(f"⚠️ Baixa concluída com problemas: {sucesso_count} sucessos, {erro_count} erros.")
+                            st.warning(f" Baixa concluída com problemas: {sucesso_count} sucessos, {erro_count} erros.")
                         
                         # Mostrar detalhes
                         with st.expander("📋 Ver Detalhes da Operação"):
@@ -702,14 +702,14 @@ elif tipo_analise == "Baixa por Faturamento":
                         st.balloons()
                         
                         # Botão para voltar
-                        if st.button("🔄 Processar Novo Arquivo"):
+                        if st.button(" Processar Novo Arquivo"):
                             st.rerun()
 
 # Footer
 st.markdown("---")
 col1, col2, col3 = st.columns(3)
 with col1:
-    if st.button("🔄 Atualizar Dados"):
+    if st.button(" Atualizar Dados"):
         st.cache_data.clear()
         st.rerun()
 
