@@ -78,6 +78,63 @@ def movimentar_estoque(codigo, quantidade, tipo, colaborador):
     except Exception as e:
         return {'success': False, 'message': f'Erro: {str(e)}'}
 
+# Função para expandir kits em componentes
+def expandir_kits(df_fatura, produtos_df):
+    """
+    Expande produtos que são kits em seus componentes individuais.
+    Se um produto tem eh_kit='Sim', substitui pelo seus componentes.
+    """
+    # Criar dicionário de kits
+    kits_dict = {}
+    for _, row in produtos_df.iterrows():
+        # Verificar se é um kit
+        eh_kit = str(row.get('eh_kit', '')).strip().lower()
+        if eh_kit == 'sim':
+            codigo = str(row['codigo']).strip().upper()
+            componentes_str = str(row.get('componentes', '')).strip()
+            quantidades_str = str(row.get('quantidades', '')).strip()
+            
+            if componentes_str and quantidades_str:
+                # Separar componentes e quantidades
+                componentes = [c.strip() for c in componentes_str.split(',')]
+                quantidades = [int(q.strip()) for q in quantidades_str.split(',')]
+                
+                if len(componentes) == len(quantidades):
+                    kits_dict[codigo] = list(zip(componentes, quantidades))
+    
+    # Se não há kits, retornar df original
+    if not kits_dict:
+        return df_fatura
+    
+    # Expandir kits
+    linhas_expandidas = []
+    for _, row in df_fatura.iterrows():
+        codigo_upper = str(row['codigo']).strip().upper()
+        quantidade_kit = row['quantidade']
+        
+        # Verificar se é um kit
+        if codigo_upper in kits_dict:
+            # Expandir em componentes
+            for componente_codigo, componente_qtd in kits_dict[codigo_upper]:
+                linhas_expandidas.append({
+                    'codigo': componente_codigo,
+                    'quantidade': quantidade_kit * componente_qtd
+                })
+        else:
+            # Não é kit, manter como está
+            linhas_expandidas.append({
+                'codigo': row['codigo'],
+                'quantidade': quantidade_kit
+            })
+    
+    # Criar novo DataFrame
+    df_expandido = pd.DataFrame(linhas_expandidas)
+    
+    # Agrupar novamente caso componentes se repitam
+    df_expandido = df_expandido.groupby('codigo', as_index=False)['quantidade'].sum()
+    
+    return df_expandido
+
 # Função para processar arquivo de faturamento
 def processar_faturamento(arquivo_upload, produtos_df):
     """
@@ -130,6 +187,9 @@ def processar_faturamento(arquivo_upload, produtos_df):
         
         # Resetar índice para evitar duplicatas
         df_fatura = df_fatura.reset_index(drop=True)
+        
+        # EXPANDIR KITS EM COMPONENTES
+        df_fatura = expandir_kits(df_fatura, produtos_df)
         
         # Criar dicionário de códigos do estoque para busca rápida
         codigos_estoque = set(produtos_df['codigo'].str.strip().str.upper())
