@@ -322,7 +322,7 @@ status_filtro = st.sidebar.selectbox("🚦 Status:", status_opcoes)
 # Tipo de análise
 tipo_analise = st.sidebar.radio(
     " Tipo de Análise:",
-    ["Visão Geral", "Análise Mín/Máx", "Movimentação", "Baixa por Faturamento"]
+    ["Visão Geral", "Análise Mín/Máx", "Movimentação", "Baixa por Faturamento", "Relatório de Faltantes"]
 )
 
 # Aplicar filtros
@@ -773,6 +773,189 @@ elif tipo_analise == "Baixa por Faturamento":
                         # Botão para voltar
                         if st.button(" Processar Novo Arquivo"):
                             st.rerun()
+
+# RELATÓRIO DE PRODUTOS FALTANTES
+elif tipo_analise == "Relatório de Faltantes":
+    st.title(" RELATÓRIO DE PRODUTOS FALTANTES")
+    
+    st.markdown("""
+    <div class="info-box">
+        <strong> Como funciona:</strong>
+        <ol>
+            <li>Faça upload do arquivo de vendas (CSV, XLS ou XLSX)</li>
+            <li>O sistema verifica quais produtos têm estoque insuficiente</li>
+            <li>Para kits, expande em componentes individuais e verifica cada um</li>
+            <li>Gera relatório com produtos/componentes faltantes</li>
+        </ol>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Upload do arquivo
+    st.subheader(" Selecione o arquivo de vendas:")
+    
+    arquivo_vendas = st.file_uploader(
+        "Arraste o arquivo ou clique para selecionar",
+        type=['csv', 'xls', 'xlsx'],
+        help="Arquivo deve conter colunas: codigo e quantidade"
+    )
+    
+    if arquivo_vendas:
+        try:
+            # Ler arquivo de vendas
+            nome_arquivo = arquivo_vendas.name.lower()
+            
+            if nome_arquivo.endswith('.csv'):
+                df_vendas = pd.read_csv(arquivo_vendas, encoding='latin1')
+            elif nome_arquivo.endswith('.xlsx'):
+                df_vendas = pd.read_excel(arquivo_vendas, engine='openpyxl')
+            elif nome_arquivo.endswith('.xls'):
+                df_vendas = pd.read_excel(arquivo_vendas, engine='xlrd')
+            
+            # Resetar índice
+            df_vendas = df_vendas.reset_index(drop=True)
+            
+            # Validar colunas
+            if 'codigo' not in df_vendas.columns or 'quantidade' not in df_vendas.columns:
+                st.error(" Arquivo deve conter as colunas 'codigo' e 'quantidade'")
+            else:
+                # Limpar dados
+                df_vendas['codigo'] = df_vendas['codigo'].astype(str).str.strip()
+                df_vendas['quantidade'] = pd.to_numeric(df_vendas['quantidade'], errors='coerce').fillna(0).astype(int)
+                
+                # Agrupar e somar duplicatas
+                df_vendas = df_vendas.groupby('codigo', as_index=False)['quantidade'].sum()
+                
+                st.success(f" Arquivo carregado: {len(df_vendas)} produtos")
+                
+                # Processar vendas e verificar estoque
+                faltantes = []
+                
+                for idx, row in df_vendas.iterrows():
+                    codigo = row['codigo']
+                    qtd_vendida = row['quantidade']
+                    
+                    # Buscar produto no estoque
+                    produto = produtos_df[produtos_df['codigo'].str.upper() == codigo.upper()]
+                    
+                    if not produto.empty:
+                        produto = produto.iloc[0]
+                        
+                        # Verificar se é kit
+                        eh_kit = str(produto.get('eh_kit', '')).strip().lower() == 'sim'
+                        
+                        if eh_kit:
+                            # Expandir kit em componentes
+                            componentes_str = str(produto.get('componentes', ''))
+                            quantidades_str = str(produto.get('quantidades', ''))
+                            
+                            if componentes_str and quantidades_str:
+                                componentes = [c.strip() for c in componentes_str.split(',')]
+                                quantidades = [int(q.strip()) for q in quantidades_str.split(',')]
+                                
+                                # Verificar cada componente
+                                for comp_codigo, comp_qtd_kit in zip(componentes, quantidades):
+                                    qtd_necessaria = qtd_vendida * comp_qtd_kit
+                                    
+                                    # Buscar componente no estoque
+                                    comp_produto = produtos_df[produtos_df['codigo'].str.upper() == comp_codigo.upper()]
+                                    
+                                    if not comp_produto.empty:
+                                        comp_produto = comp_produto.iloc[0]
+                                        estoque_atual = comp_produto['estoque_atual']
+                                        
+                                        if estoque_atual < qtd_necessaria:
+                                            faltantes.append({
+                                                'kit_original': codigo,
+                                                'codigo_componente': comp_codigo,
+                                                'nome': comp_produto['nome'],
+                                                'estoque_atual': int(estoque_atual),
+                                                'qtd_necessaria': int(qtd_necessaria),
+                                                'falta': int(qtd_necessaria - estoque_atual),
+                                                'tipo': 'Componente de Kit'
+                                            })
+                                    else:
+                                        faltantes.append({
+                                            'kit_original': codigo,
+                                            'codigo_componente': comp_codigo,
+                                            'nome': 'NÃO CADASTRADO',
+                                            'estoque_atual': 0,
+                                            'qtd_necessaria': int(qtd_necessaria),
+                                            'falta': int(qtd_necessaria),
+                                            'tipo': 'Componente NÃO Cadastrado'
+                                        })
+                        else:
+                            # Produto normal (não é kit)
+                            estoque_atual = produto['estoque_atual']
+                            
+                            if estoque_atual < qtd_vendida:
+                                faltantes.append({
+                                    'kit_original': '-',
+                                    'codigo_componente': codigo,
+                                    'nome': produto['nome'],
+                                    'estoque_atual': int(estoque_atual),
+                                    'qtd_necessaria': int(qtd_vendida),
+                                    'falta': int(qtd_vendida - estoque_atual),
+                                    'tipo': 'Produto Normal'
+                                })
+                    else:
+                        # Produto não encontrado
+                        faltantes.append({
+                            'kit_original': '-',
+                            'codigo_componente': codigo,
+                            'nome': 'NÃO CADASTRADO',
+                            'estoque_atual': 0,
+                            'qtd_necessaria': int(qtd_vendida),
+                            'falta': int(qtd_vendida),
+                            'tipo': 'Produto NÃO Cadastrado'
+                        })
+                
+                # Exibir resultados
+                st.markdown("---")
+                
+                if faltantes:
+                    st.subheader(" Produtos/Componentes com Estoque Insuficiente")
+                    
+                    df_faltantes = pd.DataFrame(faltantes)
+                    
+                    # Estatísticas
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric(" Total de Itens Faltantes", len(df_faltantes))
+                    with col2:
+                        total_falta = df_faltantes['falta'].sum()
+                        st.metric(" Total de Unidades Faltando", f"{total_falta:,}")
+                    with col3:
+                        componentes_kit = len(df_faltantes[df_faltantes['tipo'] == 'Componente de Kit'])
+                        st.metric(" Componentes de Kit", componentes_kit)
+                    
+                    st.markdown("---")
+                    
+                    # Tabela de faltantes
+                    tabela_faltantes = df_faltantes[['kit_original', 'codigo_componente', 'nome', 'estoque_atual', 'qtd_necessaria', 'falta', 'tipo']].copy()
+                    tabela_faltantes.columns = ['Kit Original', 'Código', 'Produto', 'Estoque Atual', 'Qtd Necessária', 'Falta', 'Tipo']
+                    
+                    st.dataframe(tabela_faltantes, use_container_width=True, height=400)
+                    
+                    # Download relatório
+                    st.markdown("---")
+                    csv_relatorio = tabela_faltantes.to_csv(index=False, encoding='utf-8-sig')
+                    st.download_button(
+                        label=" Baixar Relatório de Faltantes (CSV)",
+                        data=csv_relatorio,
+                        file_name=f"relatorio_faltantes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        type="primary",
+                        use_container_width=True
+                    )
+                else:
+                    st.success(" Todos os produtos têm estoque suficiente!")
+                    st.balloons()
+        
+        except Exception as e:
+            st.error(f" Erro ao processar arquivo: {str(e)}")
+
 
 # Footer
 st.markdown("---")
