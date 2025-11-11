@@ -18,7 +18,7 @@ st.set_page_config(
 
 # URLs
 SHEETS_URL = "https://docs.google.com/spreadsheets/d/1PpiMQingHf4llA03BiPIuPJPIZqul4grRU_emWDEK1o/export?format=csv"
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxDAmK8RaizGAJMBbIr_urPVP-REsD6zVZAFQI6tQPydWtxllXY2ccNPpEpITFXZ9hp/exec"
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbx06sue9R5_NqIjnqNEHDBcGpfALcaYHZ0J5Ng8gGew11uzAyGrTEHnaSkbMKZAihLaFw/exec"
 
 # Função para carregar produtos
 @st.cache_data(ttl=30)
@@ -222,6 +222,11 @@ def processar_faturamento(arquivo_upload, produtos_df):
             produtos_encontrados['estoque_atual'] = produtos_encontrados['codigo_upper'].map(
                 lambda x: estoque_dict.get(x, {}).get('estoque_atual', 0)
             )
+            
+            # Garantir que estoque_atual e quantidade sejam numéricos e tratar NaN
+            produtos_encontrados['estoque_atual'] = pd.to_numeric(produtos_encontrados['estoque_atual'], errors='coerce').fillna(0)
+            produtos_encontrados['quantidade'] = pd.to_numeric(produtos_encontrados['quantidade'], errors='coerce').fillna(0)
+            
             produtos_encontrados['estoque_final'] = produtos_encontrados['estoque_atual'] - produtos_encontrados['quantidade']
         
         return produtos_encontrados, produtos_nao_encontrados, None
@@ -322,7 +327,7 @@ status_filtro = st.sidebar.selectbox("🚦 Status:", status_opcoes)
 # Tipo de análise
 tipo_analise = st.sidebar.radio(
     " Tipo de Análise:",
-    ["Visão Geral", "Análise Mín/Máx", "Movimentação", "Baixa por Faturamento", "Relatório de Faltantes"]
+    ["Visão Geral", "Análise Mín/Máx", "Movimentação", "Baixa por Faturamento", "Histórico de Baixas", "Relatório de Faltantes"]
 )
 
 # Aplicar filtros
@@ -682,9 +687,9 @@ elif tipo_analise == "Baixa por Faturamento":
                 preview_df = produtos_encontrados[['codigo', 'nome', 'estoque_atual', 'quantidade', 'estoque_final']].copy()
                 preview_df.columns = ['Código', 'Produto', 'Estoque Atual', 'Qtd a Baixar', 'Estoque Final']
                 
-                # Formatar números
+                # Formatar números (garantir que não há NaN antes de converter para int)
                 for col in ['Estoque Atual', 'Qtd a Baixar', 'Estoque Final']:
-                    preview_df[col] = preview_df[col].astype(int)
+                    preview_df[col] = pd.to_numeric(preview_df[col], errors='coerce').fillna(0).astype(int)
                 
                 # Adicionar indicador visual
                 preview_df['Status'] = preview_df['Estoque Final'].apply(
@@ -739,15 +744,25 @@ elif tipo_analise == "Baixa por Faturamento":
                                 sucesso_count += 1
                                 resultados.append({
                                     'codigo': row['codigo'],
-                                    'status': ' Sucesso',
-                                    'novo_estoque': resultado.get('novo_estoque', 'N/A')
+                                    'nome': row['nome'],
+                                    'qtd_baixada': row['quantidade'],
+                                    'estoque_anterior': row['estoque_atual'],
+                                    'estoque_final': resultado.get('novo_estoque', 'N/A'),
+                                    'status': '✅ Sucesso',
+                                    'data_hora': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                    'colaborador': colaborador_fatura
                                 })
                             else:
                                 erro_count += 1
                                 resultados.append({
                                     'codigo': row['codigo'],
-                                    'status': f" Erro: {resultado.get('message', 'Desconhecido')}",
-                                    'novo_estoque': 'N/A'
+                                    'nome': row['nome'],
+                                    'qtd_baixada': row['quantidade'],
+                                    'estoque_anterior': row['estoque_atual'],
+                                    'estoque_final': 'N/A',
+                                    'status': f"❌ Erro: {resultado.get('message', 'Desconhecido')}",
+                                    'data_hora': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                    'colaborador': colaborador_fatura
                                 })
                             
                             progress_bar.progress((idx + 1) / total)
@@ -756,15 +771,38 @@ elif tipo_analise == "Baixa por Faturamento":
                         status_text.empty()
                         
                         # Mostrar resultado final
-                        if erro_count == 0:
-                            st.success(f" Baixa concluída com sucesso! {sucesso_count} produtos atualizados.")
-                        else:
-                            st.warning(f" Baixa concluída com problemas: {sucesso_count} sucessos, {erro_count} erros.")
+                        st.markdown("---")
+                        st.subheader("📄 Relatório de Baixas Realizadas")
                         
-                        # Mostrar detalhes
-                        with st.expander("📋 Ver Detalhes da Operação"):
-                            df_resultados = pd.DataFrame(resultados)
-                            st.dataframe(df_resultados, use_container_width=True)
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("✅ Sucessos", sucesso_count)
+                        with col2:
+                            st.metric("❌ Erros", erro_count)
+                        with col3:
+                            st.metric("📊 Total Processado", sucesso_count + erro_count)
+                        
+                        if erro_count == 0:
+                            st.success(f"✅ Baixa concluída com sucesso! {sucesso_count} produtos atualizados.")
+                        else:
+                            st.warning(f"⚠️ Baixa concluída com problemas: {sucesso_count} sucessos, {erro_count} erros.")
+                        
+                        # Tabela de resultados
+                        df_resultados = pd.DataFrame(resultados)
+                        df_resultados_display = df_resultados[['codigo', 'nome', 'qtd_baixada', 'estoque_anterior', 'estoque_final', 'status']].copy()
+                        df_resultados_display.columns = ['Código', 'Produto', 'Qtd Baixada', 'Estoque Anterior', 'Estoque Final', 'Status']
+                        
+                        st.dataframe(df_resultados_display, use_container_width=True, height=400)
+                        
+                        # Botão de download do relatório
+                        csv_relatorio = df_resultados.to_csv(index=False, encoding='utf-8-sig')
+                        st.download_button(
+                            label="📥 Baixar Relatório Completo (CSV)",
+                            data=csv_relatorio,
+                            file_name=f"relatorio_baixas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            type="primary"
+                        )
                         
                         # Limpar cache e recarregar
                         st.cache_data.clear()
@@ -773,6 +811,146 @@ elif tipo_analise == "Baixa por Faturamento":
                         # Botão para voltar
                         if st.button(" Processar Novo Arquivo"):
                             st.rerun()
+
+# HISTÓRICO DE BAIXAS POR FATURAMENTO
+elif tipo_analise == "Histórico de Baixas":
+    st.title("📊 HISTÓRICO DE BAIXAS POR FATURAMENTO")
+    
+    st.markdown("""
+    <div class="info-box">
+        <strong>📊 Informações do Histórico:</strong><br>
+        Esta aba mostra todas as baixas realizadas via faturamento.<br>
+        Os dados são carregados da planilha <strong>historico_baixas</strong> no Google Sheets.
+    </div>
+    """, unsafe_allow_html=True)
+    
+    try:
+        # URL da aba de histórico (adicionar nova aba no Google Sheets)
+        HISTORICO_URL = "https://docs.google.com/spreadsheets/d/1PpiMQingHf4llA03BiPIuPJPIZqul4grRU_emWDEK1o/gviz/tq?tqx=out:csv&sheet=historico_baixas"
+        
+        # Tentar carregar histórico
+        with st.spinner("🔄 Carregando histórico..."):
+            try:
+                response = requests.get(HISTORICO_URL, timeout=10)
+                response.raise_for_status()
+                
+                csv_data = StringIO(response.text)
+                df_historico = pd.read_csv(csv_data)
+                
+                if df_historico.empty:
+                    st.info("📄 Nenhuma baixa registrada ainda.")
+                else:
+                    # Estatísticas gerais
+                    st.markdown("---")
+                    st.subheader("📊 Estatísticas Gerais")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        total_baixas = len(df_historico)
+                        st.metric("📊 Total de Baixas", f"{total_baixas:,}")
+                    
+                    with col2:
+                        if 'qtd_baixada' in df_historico.columns:
+                            total_unidades = df_historico['qtd_baixada'].sum()
+                            st.metric("📦 Total de Unidades", f"{int(total_unidades):,}")
+                        else:
+                            st.metric("📦 Total de Unidades", "N/A")
+                    
+                    with col3:
+                        if 'colaborador' in df_historico.columns:
+                            total_colaboradores = df_historico['colaborador'].nunique()
+                            st.metric("👥 Colaboradores", total_colaboradores)
+                        else:
+                            st.metric("👥 Colaboradores", "N/A")
+                    
+                    with col4:
+                        if 'status' in df_historico.columns:
+                            sucessos = len(df_historico[df_historico['status'].str.contains('Sucesso', na=False)])
+                            st.metric("✅ Taxa de Sucesso", f"{(sucessos/total_baixas*100):.1f}%")
+                        else:
+                            st.metric("✅ Taxa de Sucesso", "N/A")
+                    
+                    # Filtros
+                    st.markdown("---")
+                    st.subheader("🔍 Filtros")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if 'colaborador' in df_historico.columns:
+                            colaboradores_hist = ['Todos'] + sorted(df_historico['colaborador'].unique().tolist())
+                            filtro_colab = st.selectbox("👤 Colaborador:", colaboradores_hist)
+                        else:
+                            filtro_colab = 'Todos'
+                    
+                    with col2:
+                        if 'status' in df_historico.columns:
+                            status_hist = ['Todos', 'Sucesso', 'Erro']
+                            filtro_status = st.selectbox("🚦 Status:", status_hist)
+                        else:
+                            filtro_status = 'Todos'
+                    
+                    with col3:
+                        if 'data_hora' in df_historico.columns:
+                            periodo_opcoes = ['Todos', 'Últimas 24h', 'Últimos 7 dias', 'Últimos 30 dias']
+                            filtro_periodo = st.selectbox("📅 Período:", periodo_opcoes)
+                        else:
+                            filtro_periodo = 'Todos'
+                    
+                    # Aplicar filtros
+                    df_filtrado_hist = df_historico.copy()
+                    
+                    if filtro_colab != 'Todos' and 'colaborador' in df_filtrado_hist.columns:
+                        df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['colaborador'] == filtro_colab]
+                    
+                    if filtro_status != 'Todos' and 'status' in df_filtrado_hist.columns:
+                        if filtro_status == 'Sucesso':
+                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['status'].str.contains('Sucesso', na=False)]
+                        else:
+                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['status'].str.contains('Erro', na=False)]
+                    
+                    if filtro_periodo != 'Todos' and 'data_hora' in df_filtrado_hist.columns:
+                        df_filtrado_hist['data_hora'] = pd.to_datetime(df_filtrado_hist['data_hora'], errors='coerce')
+                        agora = datetime.now()
+                        
+                        if filtro_periodo == 'Últimas 24h':
+                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['data_hora'] >= agora - pd.Timedelta(days=1)]
+                        elif filtro_periodo == 'Últimos 7 dias':
+                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['data_hora'] >= agora - pd.Timedelta(days=7)]
+                        elif filtro_periodo == 'Últimos 30 dias':
+                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['data_hora'] >= agora - pd.Timedelta(days=30)]
+                    
+                    # Exibir tabela
+                    st.markdown("---")
+                    st.subheader("📊 Histórico de Baixas")
+                    
+                    st.dataframe(df_filtrado_hist, use_container_width=True, height=500)
+                    
+                    # Botão de download
+                    csv_export = df_filtrado_hist.to_csv(index=False, encoding='utf-8-sig')
+                    st.download_button(
+                        label="📥 Baixar Histórico Filtrado (CSV)",
+                        data=csv_export,
+                        file_name=f"historico_baixas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        type="primary"
+                    )
+                    
+            except requests.exceptions.HTTPError:
+                st.warning("""
+                ⚠️ **Aba de histórico não encontrada!**
+                
+                Para habilitar o histórico de baixas:
+                
+                1. Abra a planilha do Google Sheets
+                2. Crie uma nova aba chamada **historico_baixas**
+                3. Adicione as colunas: `codigo`, `nome`, `qtd_baixada`, `estoque_anterior`, `estoque_final`, `status`, `data_hora`, `colaborador`
+                4. O sistema irá registrar automaticamente as próximas baixas
+                """)
+                
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar histórico: {str(e)}")
 
 # RELATÓRIO DE PRODUTOS FALTANTES
 elif tipo_analise == "Relatório de Faltantes":
