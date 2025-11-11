@@ -148,12 +148,19 @@ def processar_faturamento(arquivo_upload, produtos_df):
         
         if nome_arquivo.endswith('.csv'):
             # Tentar diferentes encodings para CSV
-            for encoding in ['latin1', 'utf-8', 'iso-8859-1', 'cp1252']:
+            df_fatura = None
+            for encoding in ['utf-8', 'utf-8-sig', 'latin1', 'iso-8859-1', 'cp1252', 'windows-1252']:
                 try:
+                    arquivo_upload.seek(0)  # Voltar ao início do arquivo
                     df_fatura = pd.read_csv(arquivo_upload, encoding=encoding)
-                    break
+                    # Verificar se as colunas foram lidas corretamente
+                    if df_fatura is not None and len(df_fatura.columns) > 0:
+                        break
                 except:
                     continue
+            
+            if df_fatura is None:
+                return None, None, "Não foi possível ler o arquivo CSV. Tente salvar como UTF-8."
         elif nome_arquivo.endswith('.xlsx'):
             df_fatura = pd.read_excel(arquivo_upload, engine='openpyxl')
         elif nome_arquivo.endswith('.xls'):
