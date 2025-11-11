@@ -816,9 +816,12 @@ elif tipo_analise == "Relatório de Faltantes":
             # Resetar índice
             df_vendas = df_vendas.reset_index(drop=True)
             
+            # Normalizar nomes das colunas para minúsculas
+            df_vendas.columns = df_vendas.columns.str.lower().str.strip()
+            
             # Validar colunas
             if 'codigo' not in df_vendas.columns or 'quantidade' not in df_vendas.columns:
-                st.error(" Arquivo deve conter as colunas 'codigo' e 'quantidade'")
+                st.error(f" Arquivo deve conter as colunas 'codigo' e 'quantidade'. Colunas encontradas: {list(df_vendas.columns)}")
             else:
                 # Limpar dados
                 df_vendas['codigo'] = df_vendas['codigo'].astype(str).str.strip()
