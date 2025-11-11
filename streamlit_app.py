@@ -161,19 +161,24 @@ def processar_faturamento(arquivo_upload, produtos_df):
         else:
             return None, None, "Formato de arquivo não suportado. Use CSV, XLS ou XLSX."
         
-        # Verificar se tem as colunas necessárias
-        if 'Código' not in df_fatura.columns and 'codigo' not in df_fatura.columns:
-            return None, None, "Arquivo não possui coluna 'Código' ou 'codigo'"
+        # Normalizar nomes das colunas primeiro (remover acentos e converter para minúsculas)
+        import unicodedata
+        def normalizar_coluna(nome):
+            # Remover acentos
+            nome = unicodedata.normalize('NFKD', str(nome)).encode('ASCII', 'ignore').decode('ASCII')
+            # Converter para minúsculas e remover espaços extras
+            return nome.lower().strip()
         
-        if 'Quantidade' not in df_fatura.columns and 'quantidade' not in df_fatura.columns:
-            return None, None, "Arquivo não possui coluna 'Quantidade' ou 'quantidade'"
+        # Criar mapeamento de colunas normalizadas
+        colunas_normalizadas = {col: normalizar_coluna(col) for col in df_fatura.columns}
+        df_fatura.rename(columns=colunas_normalizadas, inplace=True)
         
-        # Normalizar nomes das colunas
-        df_fatura.columns = df_fatura.columns.str.lower()
+        # Verificar se tem as colunas necessárias (após normalização)
+        if 'codigo' not in df_fatura.columns:
+            return None, None, f"Arquivo não possui coluna 'Código'. Colunas encontradas: {list(df_fatura.columns)}"
         
-        # Renomear se necessário
-        if 'código' in df_fatura.columns:
-            df_fatura.rename(columns={'código': 'codigo'}, inplace=True)
+        if 'quantidade' not in df_fatura.columns:
+            return None, None, f"Arquivo não possui coluna 'Quantidade'. Colunas encontradas: {list(df_fatura.columns)}"
         
         # Limpar e preparar dados
         df_fatura['codigo'] = df_fatura['codigo'].astype(str).str.strip()
