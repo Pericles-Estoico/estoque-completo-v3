@@ -49,7 +49,7 @@ def parse_int_list(value):
 # Configuração da página
 # ======================
 st.set_page_config(
-    page_title=" Estoque Cockpit - Silva Holding",
+    page_title="Estoque Cockpit - Silva Holding",
     page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -57,7 +57,9 @@ st.set_page_config(
 
 # URLs
 SHEETS_URL = "https://docs.google.com/spreadsheets/d/1PpiMQingHf4llA03BiPIuPJPIZqul4grRU_emWDEK1o/export?format=csv"
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbx06sue9R5_NqIjnqNEHDBcGpfALcaYHZ0J5Ng8gGew11uzAyGrTEHnaSkbMKZAihLaFw/exec"
+
+# 🔁 USE O DEPLOYMENT NOVO (o que você publicou agora):
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxTX9uUWnByw6sk6MtuJ5FbjV7zeBKYEoUPPlUlUDS738QqocfCd_NAlh9Eh25XhQywTw/exec"
 
 # ======================
 # Carregar produtos
@@ -117,13 +119,17 @@ def calcular_semaforo(estoque_atual, estoque_min, estoque_max):
 def movimentar_estoque(codigo, quantidade, tipo, colaborador):
     try:
         dados = {
-            'codigo': codigo,
+            'codigo': str(codigo).strip(),
             'quantidade': safe_int(quantidade, 0),
             'tipo': tipo,
             'colaborador': colaborador
         }
-        response = requests.post(WEBHOOK_URL, json=dados, timeout=10)
-        return response.json()
+        response = requests.post(WEBHOOK_URL, json=dados, timeout=15)
+        # Se o Apps Script retornar algo não-JSON, protege:
+        try:
+            return response.json()
+        except Exception:
+            return {'success': False, 'message': f'Resposta inesperada do servidor: {response.text[:200]}'}
     except Exception as e:
         return {'success': False, 'message': f'Erro: {str(e)}'}
 
@@ -135,7 +141,6 @@ def expandir_kits(df_fatura, produtos_df):
     Expande produtos que são kits em seus componentes individuais.
     Converte quantidades de forma segura (ignora NaN / vazio).
     """
-    # Dicionário de kits: {COD_KIT: [(COD_COMP, QTD), ...]}
     kits_dict = {}
     for _, row in produtos_df.iterrows():
         eh_kit = str(row.get('eh_kit', '')).strip().lower()
@@ -143,13 +148,10 @@ def expandir_kits(df_fatura, produtos_df):
             codigo = str(row.get('codigo', '')).strip().upper()
             if not codigo:
                 continue
-
             componentes_str = row.get('componentes', '')
             quantidades_str = row.get('quantidades', '')
-
             componentes = [c.strip().upper() for c in str(componentes_str).split(",") if c and c.strip()]
             quantidades = parse_int_list(quantidades_str)
-
             if componentes and quantidades and len(componentes) == len(quantidades):
                 kits_dict[codigo] = list(zip(componentes, quantidades))
 
@@ -160,7 +162,6 @@ def expandir_kits(df_fatura, produtos_df):
     for _, row in df_fatura.iterrows():
         codigo_upper = str(row['codigo']).strip().upper()
         quantidade_kit = safe_int(row.get('quantidade', 0), 0)
-
         if codigo_upper in kits_dict:
             for componente_codigo, componente_qtd in kits_dict[codigo_upper]:
                 linhas_expandidas.append({
@@ -185,7 +186,6 @@ def processar_faturamento(arquivo_upload, produtos_df):
     Retorna (produtos_encontrados, produtos_nao_encontrados, erro)
     """
     try:
-        # Ler arquivo baseado na extensão
         nome_arquivo = arquivo_upload.name.lower()
 
         if nome_arquivo.endswith('.csv'):
@@ -430,7 +430,7 @@ if tipo_analise == "Visão Geral":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader(" Distribuição por Status")
+        st.subheader("Distribuição por Status")
         status_counts = df_filtrado['status'].value_counts()
         fig_pie = px.pie(
             values=status_counts.values,
@@ -826,6 +826,10 @@ elif tipo_analise == "Histórico de Baixas":
                 if df_historico.empty:
                     st.info("📄 Nenhuma baixa registrada ainda.")
                 else:
+                    # 🔧 Coerção segura
+                    if 'qtd_baixada' in df_historico.columns:
+                        df_historico['qtd_baixada'] = pd.to_numeric(df_historico['qtd_baixada'], errors='coerce').fillna(0)
+
                     st.markdown("---")
                     st.subheader("📊 Estatísticas Gerais")
 
@@ -851,7 +855,7 @@ elif tipo_analise == "Histórico de Baixas":
 
                     with col4:
                         if 'status' in df_historico.columns:
-                            sucessos = len(df_historico[df_historico['status'].str.contains('Sucesso', na=False)])
+                            sucessos = len(df_historico[df_historico['status'].astype(str).str.contains('Sucesso', na=False)])
                             st.metric("✅ Taxa de Sucesso", f"{(sucessos/total_baixas*100):.1f}%")
                         else:
                             st.metric("✅ Taxa de Sucesso", "N/A")
@@ -863,7 +867,7 @@ elif tipo_analise == "Histórico de Baixas":
 
                     with col1:
                         if 'colaborador' in df_historico.columns:
-                            colaboradores_hist = ['Todos'] + sorted(df_historico['colaborador'].unique().tolist())
+                            colaboradores_hist = ['Todos'] + sorted(df_historico['colaborador'].astype(str).unique().tolist())
                             filtro_colab = st.selectbox("👤 Colaborador:", colaboradores_hist)
                         else:
                             filtro_colab = 'Todos'
@@ -889,9 +893,9 @@ elif tipo_analise == "Histórico de Baixas":
 
                     if filtro_status != 'Todos' and 'status' in df_filtrado_hist.columns:
                         if filtro_status == 'Sucesso':
-                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['status'].str.contains('Sucesso', na=False)]
+                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['status'].astype(str).str.contains('Sucesso', na=False)]
                         else:
-                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['status'].str.contains('Erro', na=False)]
+                            df_filtrado_hist = df_filtrado_hist[df_filtrado_hist['status'].astype(str).str.contains('Erro', na=False)]
 
                     if filtro_periodo != 'Todos' and 'data_hora' in df_filtrado_hist.columns:
                         df_filtrado_hist['data_hora'] = pd.to_datetime(df_filtrado_hist['data_hora'], errors='coerce')
@@ -1014,9 +1018,9 @@ elif tipo_analise == "Relatório de Faltantes":
                                             'kit_original': codigo,
                                             'codigo_componente': comp_codigo,
                                             'nome': comp_produto.get('nome', ''),
-                                            'estoque_atual': int(pd.to_numeric(estoque_atual, errors='coerce').fillna(0)),
+                                            'estoque_atual': safe_int(estoque_atual, 0),  # ✅ fix scalar fillna
                                             'qtd_necessaria': int(qtd_necessaria),
-                                            'falta': int(qtd_necessaria - estoque_atual),
+                                            'falta': int(qtd_necessaria - safe_int(estoque_atual, 0)),
                                             'tipo': 'Componente de Kit'
                                         })
                                 else:
@@ -1031,14 +1035,14 @@ elif tipo_analise == "Relatório de Faltantes":
                                     })
                         else:
                             estoque_atual = produto.get('estoque_atual', 0)
-                            if estoque_atual < qtd_vendida:
+                            if safe_int(estoque_atual, 0) < qtd_vendida:
                                 faltantes.append({
                                     'kit_original': '-',
                                     'codigo_componente': codigo,
                                     'nome': produto.get('nome', ''),
-                                    'estoque_atual': int(pd.to_numeric(estoque_atual, errors='coerce').fillna(0)),
+                                    'estoque_atual': safe_int(estoque_atual, 0),  # ✅ fix scalar fillna
                                     'qtd_necessaria': int(qtd_vendida),
-                                    'falta': int(qtd_vendida - estoque_atual),
+                                    'falta': int(qtd_vendida - safe_int(estoque_atual, 0)),
                                     'tipo': 'Produto Normal'
                                 })
                     else:
